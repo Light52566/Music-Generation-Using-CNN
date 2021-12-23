@@ -14,7 +14,8 @@ Kemal Alp Sezer
 import json
 import music21 as m21
 import os
-import csv
+import pandas as pd
+
 
 # Final variables
 
@@ -27,7 +28,7 @@ ACCEPTABLE_DURATIONS = [0.25,  # 16th note
                         2,  # Half note
                         3,  # Three quarter note
                         4]  # Whole note
-SAVE_DIRECTORY = 'output'
+SAVE_DIRECTORY = 'outputs'
 FINAL_DIRECTORY = 'final_dir'
 
 # us = m21.environment.UserSettings()
@@ -114,19 +115,22 @@ def preprocess(path_of_dataset: str) -> None:
     In order to feed the model, the songs must be encoded in an image format.
 
     Every note must be encoded in the format as follows:
-        [Pitch, "_", "_", "_"]
-    Number of underscores after the Pitch of the note is determined by the duration of the note.
-    For instance, if we have pitch = 60 and duration = 1.0 which is a quarter note, then there must be
-    3 underscores afterwards. Each underscore equals to 0.25 duration.
+        [[0, 0, 0, ...], [2, 1, 1, 1, 0, ...], [0, 0, 0, ...], ...]
+    Number of '1' entries after the '2' entry of the note is determined by the duration of the note.
+    For instance, if we have pitch = 60 and duration = 1.0 which is a quarter note, then:
+        [..., 2, 1, 1, 1, ...]
+    is a part of the 59th row entry. Each column refers to 0.25 duration.
     
-    Encode every rest in the song as "r"
+    Encode every rest in the song as '0' columns
     """
 
     time_step = 0.25
 
     for i, song in enumerate(songs):
         encoded_song = []
+        total_duration = 0
         for element in song.flat.notesAndRests:
+
             if isinstance(element, m21.note.Note):
                 pitch = element.pitch.midi
 
@@ -134,63 +138,49 @@ def preprocess(path_of_dataset: str) -> None:
                 pitch = "r"  # Encode the rests as 'r'
 
             number_of_steps = int(element.duration.quarterLength / time_step)
+            total_duration += number_of_steps
 
             for s in range(number_of_steps):
                 # Add all the steps
-                if s != 0:
-                    encoded_song.append("_")
-                else:
-                    encoded_song.append(pitch)
+                time_frame = [0]*88
+                if pitch != "r" and int(pitch)<=88: #there is no note
+                    if s != 0: #note still held
+                        time_frame[int(pitch)] = 1
+                    else: #note first pressed
+                        time_frame[int(pitch)] = 2
+                    encoded_song.append(time_frame)
+                else: #there is a note
+                    encoded_song.append(time_frame)
 
-            encoded_song_str = ""
-            for e in encoded_song:
-                encoded_song_str += str(e) + " "
-
-            """
-                Save the encoded song into a single file
-            """
-            output_path = os.path.join(SAVE_DIRECTORY, str(i))
-            with open(output_path, "w") as file:
-                file.write(encoded_song_str)
+        """
+            Save the encoded song into a single file
+        """
+        df = pd.DataFrame(encoded_song).transpose()
+        df.columns = range(total_duration) #each time frame
+        df.index = range(1,89)
+        df.to_csv("outputs/output"+str(i)+".csv",)
+        
 
     """
         We have saved every song's encode into their own files, however, we need to have a 
         final file that includes every song's encode.
     """
-    end_song_indicator = "/ " * 64  # There are 64 times '/ ' at the end of each song's encode
-    final_song = ""
+    end_song_indicator = pd.DataFrame([[0] * 88] * 88) # There are 88 times rest at the end of each song's encode
+    final_song = pd.DataFrame()
+    df.index = range(1,89)
     output_path = os.path.join(SAVE_DIRECTORY)
     for path, _, files in os.walk(output_path):
         for file in files:
             path_of_file = os.path.join(path, file)
-
             song = None
-            with open(path_of_file, "r") as o_file:
-                song = o_file.read()
-                final_song += song + " " + end_song_indicator
+            song = pd.read_csv(path_of_file)
+            final_song.append(song)
+            final_song.append(end_song_indicator)
 
-    final_song = final_song[:-1]
+    final_song.columns = range(final_song.shape[1]) #each time frame
+    final_song.index = range(1,89)
+    final_song.to_csv("outputs/output"+str(i)+".csv",)
 
-    with open(FINAL_DIRECTORY + "/final", "w") as final_file:
-        final_file.write(final_song)
-
-    """
-        The final_file is composed of pitch numbers, 'r's, and '_'s. However, the model can only understand numbers.
-        Therefore, we will map the pitches, 'r's and '_'s into numbers. For instance, 
-        
-        "72": 0,
-        "55: 1,
-        ... 
-    """
-    mapping_dict = {}
-    final_song_map = final_song.split()
-    key_list = list(set(final_song_map))
-
-    for i, value in enumerate(key_list):
-        mapping_dict[value] = i
-
-    with open("mapping/map.json", "w") as mp_file:
-        json.dump(mapping_dict, mp_file, indent=4)
 
 
 if __name__ == '__main__':
