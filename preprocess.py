@@ -123,7 +123,7 @@ def preprocess(path_of_dataset: str) -> None:
     
     Encode every rest in the song as '0' columns
     """
-
+    print("Songs loaded. Converting to image representation...")
     time_step = 0.25
 
     for i, song in enumerate(songs):
@@ -152,12 +152,13 @@ def preprocess(path_of_dataset: str) -> None:
                 else: #there is a note
                     encoded_song.append(time_frame)
 
+        
         """
             Save the encoded song into a single file
         """
         df = pd.DataFrame(encoded_song).transpose()
-        df.columns = range(total_duration) #each time frame
-        df.index = range(1,89)
+        #df.columns = range(total_duration) #each time frame
+        #df.index = range(1,89)
         df.to_csv("outputs/output"+str(i)+".csv",)
         
 
@@ -165,21 +166,23 @@ def preprocess(path_of_dataset: str) -> None:
         We have saved every song's encode into their own files, however, we need to have a 
         final file that includes every song's encode.
     """
+    print("Combining all song image representations...")
     end_song_indicator = pd.DataFrame([[0] * 88] * 88) # There are 88 times rest at the end of each song's encode
-    final_song = pd.DataFrame()
-    df.index = range(1,89)
+    final_song = pd.DataFrame(end_song_indicator)
+
     output_path = os.path.join(SAVE_DIRECTORY)
     for path, _, files in os.walk(output_path):
         for file in files:
             path_of_file = os.path.join(path, file)
-            song = None
-            song = pd.read_csv(path_of_file)
-            final_song.append(song)
-            final_song.append(end_song_indicator)
+            song = pd.read_csv(path_of_file).iloc[:,1:]
+            final_song = pd.concat([final_song, song, end_song_indicator], axis=1, ignore_index=True)
+            #print(final_song.shape)
+
 
     final_song.columns = range(final_song.shape[1]) #each time frame
     final_song.index = range(1,89)
-    final_song.to_csv("outputs/output"+str(i)+".csv",)
+    final_song.to_csv(FINAL_DIRECTORY+"/final.csv",)
+    print("Final product stored inside: "+FINAL_DIRECTORY+"/final.csv")
 
 
 
