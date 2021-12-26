@@ -11,10 +11,10 @@ DATASET_PATH = "outputs/output1682.csv"
 
 #importing the dataset
 print("Importing dataset...")
-df = pd.read_csv(DATASET_PATH).iloc[:,1:]
+df = pd.read_csv(DATASET_PATH).iloc[:,1:].replace(2, 1)
 print("Splitting dataset to train and test...")
-test_ds = tf.convert_to_tensor(df.iloc[:,df.shape[1]*6//10:])
-train_ds = tf.convert_to_tensor(df.iloc[:,:df.shape[1]*6//10])
+test_ds = tf.cast(tf.convert_to_tensor(df.iloc[:,df.shape[1]*6//10:]), tf.float32)
+train_ds = tf.cast(tf.convert_to_tensor(df.iloc[:,:df.shape[1]*6//10]), tf.float32)
 print(df.shape)
 
 
@@ -44,6 +44,7 @@ output_bias_init = tf.keras.initializers.Constant(-3.2)
 outputs = Conv1D(filters=1, kernel_size=1, strides=1,
                  dilation_rate=1, padding='valid',
                  bias_initializer=output_bias_init)(conv)
+tf.cast(outputs,tf.float32)
 outputs = Activation('sigmoid')(outputs)
 
 model = Model(inputs=inputs, outputs=outputs)
@@ -63,8 +64,11 @@ def train_step(images, labels):
     with tf.GradientTape() as tape:
         # training=True is only needed if there are layers with different
         # behavior during training versus inference (e.g. Dropout).
+        
         predictions = model(images, training=True)
-        print("pred:",predictions)
+        #print("here")
+        # print("pred:")
+        # tf.print(predictions)
         loss = loss_object(labels, predictions)
     gradients = tape.gradient(loss, model.trainable_variables)
     optimizer.apply_gradients(zip(gradients, model.trainable_variables))
@@ -78,9 +82,9 @@ def test_step(images, labels):
     # behavior during training versus inference (e.g. Dropout).
     predictions = model(images, training=False)
     t_loss = loss_object(labels, predictions)
-
     test_loss(t_loss)
     test_accuracy(labels, predictions)
+
 print("Training model...")
 EPOCHS = 5
 BATCH_SIZE = 62
@@ -91,16 +95,16 @@ for epoch in range(EPOCHS):
     train_accuracy.reset_states()
     test_loss.reset_states()
     test_accuracy.reset_states()
-    print("train ds shape:",train_ds.shape)
-    print("no of loops",train_ds.shape[1]-BATCH_SIZE)
+    #print("train ds shape:",train_ds.shape)
+    #print("no of loops",train_ds.shape[1]-BATCH_SIZE)
     for i in range(train_ds.shape[1]-BATCH_SIZE-1):
         train_batch = train_ds[:, i:i+BATCH_SIZE]
         #print(tf.shape(train_batch))
         train_label = tf.reshape(train_ds[:, i+BATCH_SIZE], [88,1,1])
         train_step(train_batch, train_label)
 
-    print("test ds shape:",tf.shape(test_ds))
-    print("no of loops",test_ds.shape[1]-BATCH_SIZE-1)
+    #print("test ds shape:",tf.shape(test_ds))
+    #print("no of loops",test_ds.shape[1]-BATCH_SIZE-1)
     for i in range(test_ds.shape[1]-BATCH_SIZE-1):
         test_batch = test_ds[:, i:i+BATCH_SIZE]
         #print("test batch shape:",tf.shape(test_batch))
@@ -114,4 +118,15 @@ for epoch in range(EPOCHS):
     f'Test Loss: {test_loss.result()}, '
     f'Test Accuracy: {test_accuracy.result() * 100}'
     )
+
+#music generation
+NO_OF_NOTES = 10
+seed = test_ds[:, :BATCH_SIZE]
+song_out = seed
+for i in range(NO_OF_NOTES):
+    prediction = model.predict(seed)
+    song_out =tf.concat([song_out, prediction[:,:,0]])
+    seed = song_out[i+1:i+BATCH_SIZE+1]
+print(song_out)
+
 
